@@ -12,6 +12,126 @@ const { UserModel } = require("../models/users")
 const {PickLocationModel,locationValidation} = require("../models/location");
 const { mailSender } = require("../mail/mailer")
 
+/**
+ * @swagger
+ * components:
+ *   responses:
+ *     UnauthorizedError:
+ *       description: Access token is missing or invalid
+ *   securitySchemes:
+ *     bearerAuth:
+ *       type: http
+ *       scheme: bearer
+ *       bearerFormat: JWT
+ *   schemas:
+ *     users:
+ *        type: object
+ *        required:
+ *          - _id
+ *          - name
+ *          - email
+ *          - telephonNumber
+ *          - isAdmin
+ *        properties:
+ *          _id:
+ *            type: string
+ *          name:
+ *            type: string
+ *          email:
+ *            type: string
+ *            format: email
+ *          telephoneNumber:
+ *            type: string
+ *            minimum: 10
+ *            maximum: 13
+ *          isAdmin:
+ *            type: boolean
+ *     login:
+ *        type: object
+ *        required:
+ *          - email
+ *          - password
+ *        properties:
+ *          email:
+ *            type: string
+ *            format: email
+ *          password:
+ *            type: string
+ *            format: password
+ *            minLength: 8
+ *     signup:
+ *        type: object
+ *        required:
+ *          - name
+ *          - email
+ *          - telephoneNumber
+ *          - password
+ *        properties:
+ *          name:
+ *            type: string
+ *          email:
+ *            type: string
+ *            format: email
+ *          telephoneNumber:
+ *            type: string
+ *          password:
+ *            type: string
+ *            format: password
+ *            minLength: 8
+ *        example:
+ *          name: Jon Doe
+ *          email: jondoe@mail.com
+ *          telephoneNumber: +234000000000
+ *          password: 12345678
+ *     parcels:
+ *       type: object
+ *       required:  
+ *         - parcelType
+ *         - parcelWeight
+ *         - receiverName
+ *         - receiverEmail
+ *         - receiverTel
+ *         - destinationRegion
+ *         - destinationLat
+ *         - destinationLng
+ *       properties:
+ *         parcelType:
+ *           type: string
+ *         parcelWeight:
+ *           type: integer
+ *         receiverName:
+ *           type: string
+ *         receiverEmail:
+ *           type: string
+ *           format: email
+ *         receiverTel:
+ *           type: string
+ *         destinationRegion:
+ *           type: string
+ *         destinationLat:
+ *           type: integer
+ *         destinationLng:
+ *           type: integer
+ *       example:
+ *         parcelType: Box
+ *         parcelWeight: 23
+ *         receiverName: Jon Doe
+ *         receiverEmail: jondoe@mail.com
+ *         receiverTel: +234000000000
+ *         destinationRegion: Gulu
+ *         destinationLat: 3456
+ *         destinationLng: 6543
+ */
+
+/**
+ * @swagger
+ * tags:
+ *   name: Parcels
+ *   description: A parcel delivery managing collection endpoints
+ */
+
+
+
 router.get("/",auth,exception((req,res) => {
     if (req.user.isAdmin){
         let parcels = OrderModel.find({status: {$ne: "canceled"}}).populate("user","name email telephonNumber").populate("location")
@@ -23,6 +143,22 @@ router.get("/",auth,exception((req,res) => {
         message: `Not authorized to access this data`
     })
 }))
+/** 
+ * @swagger
+ * /api/v2/parcels/all:
+ *   get:
+ *     security:
+ *       - bearerAuth: []
+ *     summary: Returns all parcel delivery orders but only accessible by the platiform admin
+ *     tags: [Parcels]
+ *     headers:
+ *       x-auth-token: token
+ *     responses:
+ *       200:
+ *         description: Successfull return of the list of all parcel delivery orders
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'       
+*/
 router.get("/all",auth,exception(async (req,res) => {
     if (req.user.isAdmin){
         const orders = await OrderModel.find().populate("owner ").populate("pickUp").sort("date")
@@ -34,7 +170,29 @@ router.get("/all",auth,exception(async (req,res) => {
         message: `Not authorized to access this data`
     })
 }))
-
+/** 
+ * @swagger
+ * /api/v2/parcels/{id}:
+ *   get:
+ *     security:
+ *       - bearerAuth: []
+ *     summary: Returns a specific parcel delivery order but only accessible by the platiform admin and the sender
+ *     tags: [Parcels]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: This is the parcel delivery number
+ *     responses:
+ *       200:
+ *         description: Successfull return of the parcel delivery order
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'    
+ *       404:
+ *         description: Parcel not found     
+*/
 router.get("/:id", auth,exception(async (req,res) => {
     let order = await OrderModel.findById(req.params.id).populate("owner","-password").populate("pickUp","-_id")
     if (order){
@@ -64,36 +222,28 @@ router.get("/:id", auth,exception(async (req,res) => {
         return res.status(404).json({message: `No parcel with id: ${req.params.id}`})
     }
 }))
-
-router.put("/:id/cancel", auth, exception(async(req,res) => {
-    const { params,user } = req
-    let order = await OrderModel.findById(params.id).populate("owner","-password")
-
-    if (!order){
-        return res.status(404).json({
-            message: `No parcel with id: ${params.id}`
-        })
-    }
-    
-    if (user.isAdmin || order.isOrderOwner(user._id)){
-        if (order.status === "delivered"){
-            return res.status(400).json({
-                message: `Can not cancel this order its already delivered`
-            })
-        }
-        order.set({
-            status: "canceled"
-        })
-        await order.save()
-        return res.status(201).json({
-            data: order
-        })
-    }
-    res.status(401).json({
-        message: `Not authorized to perform this action`
-    })
-}))
-
+/** 
+ * @swagger
+ * /api/v2/parcels/:
+ *   post:
+ *     security:
+ *       - bearerAuth: []
+ *     summary: Creates a parcel delivery order but only accessible by both the platiform admin and a registered user
+ *     tags: [Parcels]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/parcels'             
+ *     responses:
+ *       201:
+ *         description: Successfull creation of the parcel delivery order
+ *       400:
+ *         description: Invalid inputs
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'         
+*/
 router.post("/",auth,exception(async (req,res) => {
 
     let { error } = validation(req.body)
@@ -122,6 +272,48 @@ router.post("/",auth,exception(async (req,res) => {
     let order = await OrderModel.create(data)
     res.status(201).json(order)
 }))
+/** 
+ * @swagger
+ * /api/v2/parcels/{id}/pick:
+ *   post:
+ *     security:
+ *       - bearerAuth: []
+ *     summary: This end point is used to add a pick up location for the parcel delivery order only accessible by parcel owner
+ *     tags: [Parcels]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: This is the parcel delivery number
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               pickRegion: 
+ *                 type: string
+ *               pickLat:
+ *                 type: integer
+ *               pickLng:
+ *                 type: integer
+ *             example:
+ *               pickRegion: Kampala
+ *               pickLat: 3453
+ *               pickLng: 9023        
+ *     responses:
+ *       201:
+ *         description: Successfull cancel of a parcel order
+ *       400:
+ *         description: Invalid input  
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       404:
+ *         description: Parcel not found         
+*/
 router.post("/:id/pick", auth, exception(async(req,res) => {
     const { params,user } = req
     let order = await OrderModel.findById(params.id).populate("owner", "-password");
@@ -162,7 +354,111 @@ router.post("/:id/pick", auth, exception(async(req,res) => {
         message: `Not authorized to perform this action`
     })
 }))
+/** 
+ * @swagger
+ * /api/v2/parcels/{id}/cancel:
+ *   put:
+ *     security:
+ *       - bearerAuth: []
+ *     summary: This end point is used to cancel a parcel delivery order only accessible by both admin and parcel owner
+ *     tags: [Parcels]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: This is the parcel delivery number
+ *     responses:
+ *       201:
+ *         description: Successfull cancel of a parcel order
+ *       400:
+ *         description: Can not cancel already delivered parcel  
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       404:
+ *         description: Parcel not found         
+*/
+router.put("/:id/cancel", auth, exception(async(req,res) => {
+    const { params,user } = req
+    let order = await OrderModel.findById(params.id).populate("owner","-password")
 
+    if (!order){
+        return res.status(404).json({
+            message: `No parcel with id: ${params.id}`
+        })
+    }
+    
+    if (user.isAdmin || order.isOrderOwner(user._id)){
+        if (order.status === "delivered"){
+            return res.status(400).json({
+                message: `Can not cancel this order its already delivered`
+            })
+        }
+        order.set({
+            status: "canceled"
+        })
+        await order.save()
+        return res.status(201).json({
+            data: order
+        })
+    }
+    res.status(401).json({
+        message: `Not authorized to perform this action`
+    })
+}))
+/** 
+ * @swagger
+ * /api/v2/parcels/{id}/destination:
+ *   put:
+ *     security:
+ *       - bearerAuth: []
+ *     summary: This end point is used to update the a parcel delivery order's destination only accessible by both admin and parcel owner
+ *     tags: [Parcels]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: This is the parcel delivery number
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               receiverName:
+ *                 type: string
+ *               receiverEmail:
+ *                 type: string
+ *                 format: email
+ *               receiverTel:
+ *                 type: string
+ *               destinationRegion: 
+ *                 type: string
+ *               destinationLat:
+ *                 type: integer
+ *               destinationLng:
+ *                 type: integer
+ *             example:
+ *               receiverName: Jon Doe
+ *               receiverEmail: jondoe@mail.com
+ *               receiverTel: +256779345
+ *               destinationRegion: Arua
+ *               destinationLat: 3453
+ *               destinationLng: 9023
+ *     responses:
+ *       201:
+ *         description: Successfull cancel of a parcel order
+ *       400:
+ *         description: Invalid inputs  
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       404:
+ *         description: Parcel not found         
+*/
 router.put("/:id/destination",auth,exception(async (req,res) => {
     let order = await OrderModel.findById(req.params.id)
     if (order.isOrderOwner(req.user._id)){
@@ -205,7 +501,50 @@ router.put("/:id/destination",auth,exception(async (req,res) => {
         message: `Not authorized to perform this action`
     })
 }))
-
+/** 
+ * @swagger
+ * /api/v2/parcels/{id}/status:
+ *   put:
+ *     security:
+ *       - bearerAuth: []
+ *     summary: This end point is used to update the a parcel delivery order's status only accessible by both admin and parcel owner
+ *     tags: [Parcels]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: This is the parcel delivery number
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               status: 
+ *                 type: string
+ *                 enum: [inprocess, pending, delivered, canceled]
+ *           examples:
+ *             pending:
+ *               summary: pending --> The parcel is either yet to be picked or still at the station
+ *             inprocess:
+ *               summary: inprocess --> The parcel is in transit from one point to another
+ *             delivered:
+ *               summary: delivered --> The parcel is already delivered to the destination location
+ *             canceled:
+ *               summary: canceled --> The parcel is canceled by either the sender or the admin                   
+ *     responses:
+ *       201:
+ *         description: Successfull cancel of a parcel order
+ *       400:
+ *         description: Invalid inputs  
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       404:
+ *         description: Parcel not found         
+*/
 router.put("/:id/status",auth,exception(async (req,res) => {
     /*
             **** Status ****
@@ -240,7 +579,48 @@ router.put("/:id/status",auth,exception(async (req,res) => {
     mailSender(to,from,subject,message)
     res.status(201).json(result)
 }))
-
+/** 
+ * @swagger
+ * /api/v2/parcels/{id}/presentLocation:
+ *   put:
+ *     security:
+ *       - bearerAuth: []
+ *     summary: This end point is used to update the a parcel delivery order's present location only accessible by both admin and parcel owner
+ *     tags: [Parcels]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: This is the parcel delivery number
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               presentRegion: 
+ *                 type: string
+ *               presentLat:
+ *                 type: integer
+ *               presentLng:
+ *                 type: integer
+ *             example:
+ *               presentRegion: Kampala
+ *               presentLat: 3453
+ *               presentLng: 9023 
+ *     responses:
+ *       201:
+ *         description: Successfull cancel of a parcel order
+ *       400:
+ *         description: Invalid inputs  
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       404:
+ *         description: Parcel not found         
+*/
 router.put("/:id/presentLocation",auth,exception(async (req,res) => {
     if (!req.user.isAdmin){
         return res.status(401).json({
