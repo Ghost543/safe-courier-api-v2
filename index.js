@@ -4,7 +4,7 @@ const cors = require("cors")
 const helmet = require("helmet")
 const swaggerUI = require("swagger-ui-express")
 const swaggerJsDoc = require("swagger-jsdoc")
-
+const compress = require("compression")
 const { error } = require("./middleware/exceptionHandler")
 
 const login = require("./auth/login")
@@ -22,6 +22,9 @@ const options = {
         },
         servers: [
             {
+                url: "https://safe-courier.herokuapp.com"
+            },
+            {
                 url: "http://localhost:3100"
             }
         ]
@@ -35,6 +38,8 @@ const app = express()
 app.use("/api-docs",swaggerUI.serve,swaggerUI.setup(specs))
 app.use(cors())
 app.use(helmet())
+app.use(compress())
+
 app.use(express.json())
 
 app.use("/api/v2/auth",signup,login)

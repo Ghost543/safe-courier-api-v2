@@ -5,4 +5,10 @@ mongoose.connect(connectionString,{ useNewUrlParser: true, useUnifiedTopology: t
     .then(()=>console.log(`Db is successfully connected`))
     .catch(err=>console.error(err))
 
+
+
+
+
+
+    
 module.exports = mongoose
